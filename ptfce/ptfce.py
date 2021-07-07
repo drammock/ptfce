@@ -275,3 +275,48 @@ def ptfce(data, adjacency, noise, max_cluster_size, seed=None):
             cluster_size_density_func,
             all_data_clusters_by_thresh,
             all_data_cluster_sizes_by_thresh)
+
+
+def calc_thresholded_source_prior(threshold, noise):
+    """Find empirically the probability of a source being suprathreshold.
+
+    Vectorized over thresholds.
+    """
+    noise = np.atleast_2d(noise.ravel())          # (1, noise.size)
+    thresh = np.atleast_2d(threshold).T           # (thresh.size, 1)
+    suprathresh = (noise > thresh)                # (thresh.size, noise.size)
+    n_suprathresh_src = suprathresh.sum(axis=-1)  # (thresh.size,)
+    assert n_suprathresh_src.shape[0] == thresh.size
+    return n_suprathresh_src / noise.size
+
+
+def plot_null_distr(noise, n_iter, source_activation_density_func,
+                    cluster_size_density_func, all_noise_cluster_sizes):
+    import matplotlib.pyplot as plt
+    # initialize figure
+    fig, axs = plt.subplots(1, 3)
+    subtitle = f'\n({n_iter} noise iterations)'
+    # first plot: source activation density
+    ax = axs[0]
+    x = np.linspace(noise.min(), noise.max(), 100)
+    y = source_activation_density_func(x)
+    ax.plot(x, y)
+    ax.set(title=f'source activation density{subtitle}',
+           xlabel='activation', ylabel='density')
+    # second plot: probability of suprathresholdness
+    ax = axs[1]
+    y = calc_thresholded_source_prior(threshold=x, noise=noise)
+    ax.plot(x, y)
+    ax.set(title=f'probability of suprathresholdness{subtitle}',
+           xlabel='threshold', ylabel='probability')
+    # third plot: cluster size density
+    ax = axs[2]
+    x = np.arange(all_noise_cluster_sizes.max()) + 1
+    y = cluster_size_density_func(x)
+    ax.semilogx(x, y)
+    ax.set(title=f'cluster size density across all thresholds{subtitle}',
+           xlabel='cluster size', ylabel='density')
+    # layout
+    fig.set_size_inches((12, 4))
+    fig.subplots_adjust(bottom=0.15, wspace=0.4, left=0.075, right=0.95)
+    return fig

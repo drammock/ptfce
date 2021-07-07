@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import mne
-from ptfce import timer, ptfce
+from ptfce import timer, ptfce, plot_null_distr
 
 
 rng = np.random.default_rng(seed=15485863)  # the one millionth prime
@@ -162,6 +162,12 @@ stc_ptfce.data = _ptfce.reshape(stc.data.shape)
 
 foo = stc_ptfce.copy()
 foo.data = -1 * np.log10(np.maximum(foo.data, 1e-10))
+fig1 = stc.plot(title='original')
+fig2 = foo.plot(title='enhanced')
+fig1.save_image('figs/original-stc-data.png')
+fig2.save_image('figs/enhanced-stc-data.png')
 
-fig1 = stc.plot()
-fig2 = foo.plot()
+fig = plot_null_distr(
+    noise, n_iter, source_activation_density_func, cluster_size_density_func,
+    all_noise_cluster_sizes)
+fig.savefig('figs/null-distribution-plots-stc.png')

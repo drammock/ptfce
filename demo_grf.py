@@ -4,10 +4,9 @@ from FyeldGenerator import generate_field
 from mne.stats import combine_adjacency
 import matplotlib.pyplot as plt
 
-from ptfce import timer, ptfce
+from ptfce import timer, ptfce, plot_null_distr
 
 rng = np.random.default_rng(seed=15485863)  # the one millionth prime
-plt.ion()
 
 # configuration variables
 n_iter = 20
@@ -76,3 +75,9 @@ titles = ('original', 'enhanced')
 for ax, title, array in zip(axs, titles, (data, enhanced_img)):
     ax.imshow(array, cmap='Greys')
     ax.set(title=title)
+fig.savefig('figs/original-and-enhanced-grf-data.png')
+
+fig = plot_null_distr(
+    _noise, n_iter, source_activation_density_func, cluster_size_density_func,
+    all_noise_cluster_sizes)
+fig.savefig('figs/null-distribution-plots-grf.png')
