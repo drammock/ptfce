@@ -125,9 +125,12 @@ def _prob_suprathresh_given_cluster_size(
         threshold, all_thresholds, observed_cluster_size,
         source_activation_density_func,
         threshold_specific_cluster_size_density_func):
-    """pvox.clust()"""
+    """Computes p-val (integral above `threshold`) for a given cluster size.
+
+    Equivalent in pTFCE source code is pvox.clust(); Spisák et al. equation 3
+    """
     thresh_ix = all_thresholds.tolist().index(threshold)
-    x = all_thresholds[thresh_ix:]
+    x = all_thresholds[thresh_ix:]  # suprathreshold
     y = _suprathresh_density_given_cluster_size(
         x, all_thresholds, observed_cluster_size,
         source_activation_density_func,
@@ -136,18 +139,18 @@ def _prob_suprathresh_given_cluster_size(
     return integral
 
 
-def _aggregate_logp_vals(unaggregated_probs, delta_logp_thresh):
+def _aggregate_pvals(unaggregated_probs, delta_logp_thresh):
     """Perform p-value enhancement by aggregating across thresholds."""
     # avoid underflow
     finfo = np.finfo(unaggregated_probs.dtype)
     unaggregated_probs[unaggregated_probs == 0] = finfo.eps
     unaggregated_probs[unaggregated_probs == 1] = 1 - finfo.epsneg
     # S(x) = ∑ᵢ -log(P(V ≥ hᵢ|cᵢ)) at voxel position x   (Spisák et al. eq. 10)
-    neglogp = np.sum(-np.log(unaggregated_probs), axis=0)
+    agg_neg_log_p = np.sum(-np.log(unaggregated_probs), axis=0)
     # (sqrt(Δk * (8S(x) + Δk)) - Δk) / 2   (Spisák et al. eq. 9)
-    radicand = delta_logp_thresh * (8 * neglogp + delta_logp_thresh)
+    radicand = delta_logp_thresh * (8 * agg_neg_log_p + delta_logp_thresh)
     enhanced = (np.sqrt(radicand) - delta_logp_thresh) / 2
-    # neglogp → regular p-values
+    # agg_neg_log_p → regular p-values
     return np.exp(-1 * enhanced)
 
 
@@ -265,7 +268,7 @@ def ptfce(data, adjacency, noise, max_cluster_size, seed=None):
         print()
 
     with timer('aggregating and adjusting probabilities'):
-        _ptfce = _aggregate_logp_vals(unaggregated_probs, delta_logp_thresh)
+        _ptfce = _aggregate_pvals(unaggregated_probs, delta_logp_thresh)
 
     return (_ptfce,
             all_thresholds,
