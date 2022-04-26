@@ -1,6 +1,8 @@
 import os
 import numpy as np
+from matplotlib.pyplot import close, ion
 import mne
+import nibabel as nib
 from ptfce import timer, ptfce, plot_null_distr
 
 
@@ -11,6 +13,9 @@ sample_data_folder = mne.datasets.sample.data_path()
 n_jobs = 4
 n_iter = 20
 verbose = False
+volume = False
+single_timepoint = False
+stc_kind = 'vol' if volume else 'surf'
 
 
 def get_sensor_data():
@@ -41,27 +46,31 @@ def get_sensor_data():
 
 
 def get_inverse(raw, noise_cov, subject, subjects_dir, n_jobs=1,
-                verbose=None):
+                volume=False, verbose=None):
     """Load or compute the inverse operator."""
-    fname = 'ptfce-inv.fif'
+    fname = 'ptfce-vol-inv.fif' if volume else 'ptfce-inv.fif'
     try:
         inverse = mne.minimum_norm.read_inverse_operator(fname)
         print('Loaded inverse from disk.')
     except FileNotFoundError:
-        src = mne.setup_source_space(
-            subject, spacing='oct6', add_dist='patch',
-            subjects_dir=subjects_dir, verbose=verbose)
         model = mne.make_bem_model(
-            subject='sample', ico=4, subjects_dir=subjects_dir,
+            subject=subject, ico=4, subjects_dir=subjects_dir,
             verbose=verbose)
         bem = mne.make_bem_solution(model, verbose=verbose)
         trans = os.path.join(
             sample_data_folder, 'MEG', 'sample', 'sample_audvis_raw-trans.fif')
+        if volume:
+            src = mne.setup_volume_source_space(
+                subject, pos=5.0, bem=bem, verbose=verbose)
+        else:
+            src = mne.setup_source_space(
+                subject, spacing='oct6', add_dist='patch',
+                subjects_dir=subjects_dir, verbose=verbose)
         fwd = mne.make_forward_solution(
             raw.info, trans=trans, src=src, bem=bem, meg=True, eeg=True,
             mindist=0, n_jobs=n_jobs, verbose=verbose)
         inverse = mne.minimum_norm.make_inverse_operator(
-            raw.info, fwd, noise_cov, loose=0.2, depth=0.8, verbose=verbose)
+            raw.info, fwd, noise_cov, loose='auto', depth=0.8, verbose=verbose)
         mne.minimum_norm.write_inverse_operator(
             fname, inverse, verbose=verbose)
     return inverse
@@ -105,14 +114,16 @@ inverse_kwargs = dict(lambda2=lambda2, method='dSPM', pick_ori=None,
 subject = 'sample'
 subjects_dir = os.path.join(sample_data_folder, 'subjects')
 inverse = get_inverse(
-    raw, noise_cov, subject, subjects_dir, n_jobs=n_jobs, verbose=verbose)
+    raw, noise_cov, subject, subjects_dir, n_jobs=n_jobs, verbose=verbose,
+    volume=volume)
 src_adjacency = mne.spatial_src_adjacency(inverse['src'])
 adjacency = None
 
 # reduce to 1 timepoint, for simplicity for now
-ch, t_peak = evoked.get_peak()
-evoked.crop(t_peak, t_peak)
-assert evoked.data.shape[1] == 1
+if single_timepoint:
+    ch, t_peak = evoked.get_peak()
+    evoked.crop(t_peak, t_peak)
+    assert evoked.data.shape[1] == 1
 
 # make STC from data
 print('Creating STC from data')
@@ -151,23 +162,41 @@ with timer('running pTFCE'):
      all_data_cluster_sizes_by_thresh
      ) = ptfce(data, adjacency, noise, max_cluster_size, seed=rng)
 
-# convert back into STC
+# copy results into STC container
 stc_ptfce = stc.copy()
 stc_ptfce.data = _ptfce.reshape(stc.data.shape)
 
 
-# # # # # #
-# TESTING #
-# # # # # #
+# # # # # # # # # # # # #
+# VISUALIZE THE RESULTS #
+# # # # # # # # # # # # #
 
+# convert p-values to -log10 pvalues
 foo = stc_ptfce.copy()
 foo.data = -1 * np.log10(np.maximum(foo.data, 1e-10))
-fig1 = stc.plot(title='original')
-fig2 = foo.plot(title='enhanced')
-fig1.save_image('figs/original-stc-data.png')
-fig2.save_image('figs/enhanced-stc-data.png')
+clim = dict(kind='value', lims=tuple(-np.log10([0.05, 0.001, 1e-10])))
 
+# plot before/after on brains
+if volume:
+    assert isinstance(stc, mne.VolSourceEstimate)
+    # these nilearn-based plots block execution by default, so use ion
+    with ion():
+        fig1 = stc.plot(src=inverse['src'])
+        fig2 = foo.plot(src=inverse['src'], clim=clim)
+    close('all')
+    # save orig & enhanced volumes as nifti, to compare with R implementation
+    for name, est in dict(orig=stc, enh=foo).items():
+        nib.save(est.as_volume(inverse['src'], mri_resolution=True),
+                 f'ptfce_{name}.nii.gz')
+else:
+    fig1 = stc.plot(title='original')
+    fig2 = foo.plot(title='enhanced', clim=clim)
+# save brain plots
+fig1.save_image(f'figs/original-stc-data-{stc_kind}.png')
+fig2.save_image(f'figs/enhanced-stc-data-{stc_kind}.png')
+
+# plot distributions and save
 fig = plot_null_distr(
     noise, n_iter, source_activation_density_func, cluster_size_density_func,
     all_noise_cluster_sizes)
-fig.savefig('figs/null-distribution-plots-stc.png')
+fig.savefig(f'figs/null-distribution-plots-{stc_kind}-stc.png')
