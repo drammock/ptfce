@@ -126,6 +126,9 @@ if single_timepoint:
     evoked.crop(t_peak, t_peak)
     assert evoked.data.shape[1] == 1
 
+# automatically choose fewer noise simulations if there are more timepoints
+n_iter = min(n_iter, np.ceil(n_iter / len(evoked.times)).astype(int))
+
 # make STC from data
 print('Creating STC from data')
 stc = mne.minimum_norm.apply_inverse(
