@@ -1,10 +1,10 @@
+import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import multivariate_normal, zscore
 from FyeldGenerator import generate_field
 from mne.stats import combine_adjacency
-import matplotlib.pyplot as plt
+from scipy.stats import multivariate_normal, zscore
 
-from ptfce import timer, ptfce, plot_null_distr
+from ptfce import plot_null_distr, ptfce, timer
 
 rng = np.random.default_rng(seed=15485863)  # the one millionth prime
 

@@ -1,10 +1,11 @@
 import os
-import numpy as np
-from matplotlib.pyplot import close, ion
+
 import mne
 import nibabel as nib
-from ptfce import timer, ptfce, plot_null_distr
+import numpy as np
+from matplotlib.pyplot import close, ion
 
+from ptfce import plot_null_distr, ptfce, timer
 
 rng = np.random.default_rng(seed=15485863)  # the one millionth prime
 sample_data_folder = mne.datasets.sample.data_path()
