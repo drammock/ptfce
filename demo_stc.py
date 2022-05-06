@@ -151,7 +151,7 @@ noise_stcs = mne.minimum_norm.apply_inverse_epochs(
 noise = np.array([_stc.data.ravel() for _stc in noise_stcs])
 
 # compute pTFCE
-with timer('running pTFCE'):
+with timer('running pTFCE', oneline=False):
     (_ptfce,
      all_thresholds,
      unaggregated_probs,

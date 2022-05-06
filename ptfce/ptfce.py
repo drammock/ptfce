@@ -28,32 +28,38 @@ author: Daniel McCloy <dan@mccloy.info>
 license: BSD 3-clause
 '''
 
+import warnings
+from contextlib import contextmanager
 # from functools import partial
 from time import perf_counter
-from contextlib import contextmanager
+
+import mne
 import numpy as np
 from scipy.integrate import trapezoid
 from scipy.interpolate import interp1d
-from scipy.stats import norm, gaussian_kde
-import mne
+from scipy.stats import gaussian_kde, norm
+from tqdm.auto import tqdm
 
 # prevent NaN propogation / careless array munging
-import warnings
 warnings.filterwarnings('error', 'invalid value encountered in')
 warnings.filterwarnings('error', 'divide by zero encountered in')
 warnings.filterwarnings('error', 'Creating an ndarray from ragged nested')
 
 
 @contextmanager
-def timer(description: str) -> None:
+def timer(description: str, oneline: bool = True) -> None:
     """Simple context manager for timing code execution piecemeal."""
     if description:
-        print(description)
+        kwargs = dict(end=': ', flush=True) if oneline else dict()
+        print(description, **kwargs)
     start = perf_counter()
     yield
     elapsed_time = perf_counter() - start
     space = ' ' if description else ''
-    print(f'elapsed time{space}{description}: {elapsed_time:.4f} sec.')
+    msg = f'{elapsed_time:.4f} sec.'
+    if not oneline:
+        msg = f'elapsed time{space}{description}: {msg}'
+    print(msg)
 
 
 def calc_thresholds(data, n_thresh=100):
@@ -180,20 +186,16 @@ def ptfce(data, adjacency, noise, max_cluster_size, seed=None):
         # ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ this is the p(v) distribution
         source_activation_density_func = gaussian_kde(noise.ravel())
 
-    with timer('finding clusters in noise simulations'):
-        all_noise_clusters = list()
-        for iter_ix, noise_iter in enumerate(noise):
-            print(f'iteration {iter_ix}, threshold ', end='', flush=True)
-            this_clusters = list()
-            for thresh_ix, threshold in enumerate(all_thresholds):
-                # progress bar
-                if not thresh_ix % 5:
-                    print(f'{thresh_ix} ', end='', flush=True)
-                # compute cluster size prior
-                clust = _find_clusters(noise_iter, threshold, adjacency)
-                this_clusters.append(clust)
-            print()
-            all_noise_clusters.append(this_clusters)
+    all_noise_clusters = list()
+    for noise_iter in tqdm(noise, unit='simulation', position=0,
+                           desc='running noise simulations'):
+        this_clusters = list()
+        for threshold in tqdm(all_thresholds, unit='threshold', position=1,
+                              desc='finding clusters at each threshold'):
+            # compute cluster size prior
+            clust = _find_clusters(noise_iter, threshold, adjacency)
+            this_clusters.append(clust)
+        all_noise_clusters.append(this_clusters)
 
     with timer('calculating cluster size distribution from noise'):
         # pool obs across epochs & thresholds → total prob of each cluster size
@@ -232,40 +234,38 @@ def ptfce(data, adjacency, noise, max_cluster_size, seed=None):
         return np.array(densities)
 
     # apply to the real data
-    with timer('finding clusters in real data'):
-        print('threshold number: ', end='', flush=True)
-        unaggregated_probs = np.ones(
-            (len(all_thresholds), *data.shape), dtype=float)
-        all_data_clusters_by_thresh = list()
-        all_data_cluster_sizes_by_thresh = list()
-        for thresh_ix, threshold in enumerate(all_thresholds):
-            # progress bar
-            if not thresh_ix % 5:
-                print(f'{thresh_ix} ', end='', flush=True)
-            # find clusters in data STC
-            data_clusters = _find_clusters(data, threshold, adjacency)
-            data_cluster_sizes = _get_cluster_sizes(data_clusters)
-            all_data_clusters_by_thresh.append(data_clusters)
-            all_data_cluster_sizes_by_thresh.append(data_cluster_sizes)
-            uniq_data_cluster_sizes = np.unique(data_cluster_sizes)
-            # compute unaggregated probs. (the call to
-            # _prob_suprathresh_given_cluster_size is slow, so do it only once
-            # for each unique cluster size)
-            uniq_data_cluster_probs = {
-                size: _prob_suprathresh_given_cluster_size(
-                    threshold, all_thresholds, size,
-                    source_activation_density_func,
-                    threshold_specific_cluster_size_density_func)
-                for size in uniq_data_cluster_sizes}
-            # prepare prob array that will zip with clusters
-            data_cluster_probs = np.array(
-                [uniq_data_cluster_probs[size] for size in data_cluster_sizes])
-            # assign probs to vertices in thresh-appropriate slice of big array
-            for clust, prob in zip(data_clusters, data_cluster_probs):
-                # make sure we're not overwriting anything
-                assert np.all(unaggregated_probs[thresh_ix][clust] == 1.)
-                unaggregated_probs[thresh_ix][clust] = prob
-        print()
+    unaggregated_probs = np.ones(
+        (len(all_thresholds), *data.shape), dtype=float)
+    all_data_clusters_by_thresh = list()
+    all_data_cluster_sizes_by_thresh = list()
+    for thresh_ix, threshold in tqdm(
+            enumerate(all_thresholds),
+            desc='finding clusters in real data',
+            unit='threshold',
+            total=len(all_thresholds)):
+        # find clusters in data STC
+        data_clusters = _find_clusters(data, threshold, adjacency)
+        data_cluster_sizes = _get_cluster_sizes(data_clusters)
+        all_data_clusters_by_thresh.append(data_clusters)
+        all_data_cluster_sizes_by_thresh.append(data_cluster_sizes)
+        uniq_data_cluster_sizes = np.unique(data_cluster_sizes)
+        # compute unaggregated probs. (the call to
+        # _prob_suprathresh_given_cluster_size is slow, so do it only once
+        # for each unique cluster size)
+        uniq_data_cluster_probs = {
+            size: _prob_suprathresh_given_cluster_size(
+                threshold, all_thresholds, size,
+                source_activation_density_func,
+                threshold_specific_cluster_size_density_func)
+            for size in uniq_data_cluster_sizes}
+        # prepare prob array that will zip with clusters
+        data_cluster_probs = np.array(
+            [uniq_data_cluster_probs[size] for size in data_cluster_sizes])
+        # assign probs to vertices in thresh-appropriate slice of big array
+        for clust, prob in zip(data_clusters, data_cluster_probs):
+            # make sure we're not overwriting anything
+            assert np.all(unaggregated_probs[thresh_ix][clust] == 1.)
+            unaggregated_probs[thresh_ix][clust] = prob
 
     with timer('aggregating and adjusting probabilities'):
         _ptfce = _aggregate_pvals(unaggregated_probs, delta_logp_thresh)
@@ -296,6 +296,7 @@ def calc_thresholded_source_prior(threshold, noise):
 def plot_null_distr(noise, n_iter, source_activation_density_func,
                     cluster_size_density_func, all_noise_cluster_sizes):
     import matplotlib.pyplot as plt
+
     # initialize figure
     fig, axs = plt.subplots(1, 3)
     subtitle = f'\n({n_iter} noise iterations)'
