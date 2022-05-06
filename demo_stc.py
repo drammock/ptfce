@@ -178,26 +178,32 @@ stc_ptfce.data = _ptfce.reshape(stc.data.shape)
 # convert p-values to -log10 pvalues
 foo = stc_ptfce.copy()
 foo.data = -1 * np.log10(np.maximum(foo.data, 1e-10))
-clim = dict(kind='value', lims=tuple(-np.log10([0.05, 0.001, 1e-10])))
+pval_threshs = np.array([0.05, 0.001, 1e-10])
+clim_enh = dict(kind='value', lims=tuple(-np.log10(pval_threshs)))
+clim_orig = dict(kind='percent', lims=tuple(100 * (1 - pval_threshs)))
+# auto clims yields: 96, 97.5, 99.95
 
 # plot before/after on brains
 if volume:
     assert isinstance(stc, mne.VolSourceEstimate)
     # these nilearn-based plots block execution by default, so use ion
     with ion():
-        fig1 = stc.plot(src=inverse['src'])
-        fig2 = foo.plot(src=inverse['src'], clim=clim)
+        fig1 = stc.plot(src=inverse['src'], clim=clim_orig)
+        fig2 = foo.plot(src=inverse['src'], clim=clim_enh)
     close('all')
     # save orig & enhanced volumes as nifti, to compare with R implementation
     for name, est in dict(orig=stc, enh=foo).items():
         nib.save(est.as_volume(inverse['src'], mri_resolution=True),
                  f'ptfce_{name}.nii.gz')
 else:
-    fig1 = stc.plot(title='original')
-    fig2 = foo.plot(title='enhanced', clim=clim)
-# save brain plots
-fig1.save_image(f'figs/original-stc-data-{stc_kind}.png')
-fig2.save_image(f'figs/enhanced-stc-data-{stc_kind}.png')
+    for title, (_stc, clim) in dict(enhanced=(foo, clim_enh),
+                                    original=(stc, clim_orig)).items():
+
+        fig = _stc.plot(title=title,
+                        initial_time=_stc.get_peak()[1],
+                        clim=clim)
+        # save brain plots
+        fig.save_image(f'figs/{title}-stc-data-{stc_kind}.png')
 
 # plot distributions and save
 fig = plot_null_distr(
