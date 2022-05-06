@@ -15,7 +15,6 @@ n_jobs = 4
 n_iter = 20
 verbose = False
 volume = True
-single_timepoint = False
 stc_kind = 'vol' if volume else 'surf'
 
 
@@ -119,12 +118,6 @@ inverse = get_inverse(
     volume=volume)
 src_adjacency = mne.spatial_src_adjacency(inverse['src'])
 adjacency = None
-
-# reduce to 1 timepoint, for simplicity for now
-if single_timepoint:
-    ch, t_peak = evoked.get_peak()
-    evoked.crop(t_peak, t_peak)
-    assert evoked.data.shape[1] == 1
 
 # automatically choose fewer noise simulations if there are more timepoints
 n_iter = min(n_iter, np.ceil(n_iter / len(evoked.times)).astype(int))
