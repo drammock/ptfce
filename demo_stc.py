@@ -14,7 +14,7 @@ sample_data_folder = mne.datasets.sample.data_path()
 n_jobs = 4
 n_iter = 20
 verbose = False
-volume = False
+volume = True
 single_timepoint = False
 stc_kind = 'vol' if volume else 'surf'
 
@@ -184,26 +184,23 @@ clim_orig = dict(kind='percent', lims=tuple(100 * (1 - pval_threshs)))
 # auto clims yields: 96, 97.5, 99.95
 
 # plot before/after on brains
-if volume:
-    assert isinstance(stc, mne.VolSourceEstimate)
-    # these nilearn-based plots block execution by default, so use ion
-    with ion():
-        fig1 = stc.plot(src=inverse['src'], clim=clim_orig)
-        fig2 = foo.plot(src=inverse['src'], clim=clim_enh)
-    close('all')
-    # save orig & enhanced volumes as nifti, to compare with R implementation
-    for name, est in dict(orig=stc, enh=foo).items():
-        nib.save(est.as_volume(inverse['src'], mri_resolution=True),
-                 f'ptfce_{name}.nii.gz')
-else:
-    for title, (_stc, clim) in dict(enhanced=(foo, clim_enh),
-                                    original=(stc, clim_orig)).items():
-
-        fig = _stc.plot(title=title,
-                        initial_time=_stc.get_peak()[1],
-                        clim=clim)
-        # save brain plots
-        fig.save_image(f'figs/{title}-stc-data-{stc_kind}.png')
+for title, (_stc, clim) in dict(enhanced=(foo, clim_enh),
+                                original=(stc, clim_orig)).items():
+    fname = f'figs/{title}-stc-data-{stc_kind}.png'
+    if volume:
+        assert isinstance(stc, mne.VolSourceEstimate)
+        # these nilearn-based plots block execution by default, so use ion
+        with ion():
+            fig = _stc.plot(src=inverse['src'], clim=clim)
+            fig.savefig(fname)
+            close(fig)
+        # save volume as nifti, to compare with R implementation
+        nib.save(_stc.as_volume(inverse['src'], mri_resolution=True),
+                 f'ptfce_{title}.nii.gz')
+    else:
+        fig = _stc.plot(title=title, clim=clim,
+                        initial_time=_stc.get_peak()[1])
+        fig.save_image(fname)
 
 # plot distributions and save
 fig = plot_null_distr(
