@@ -188,12 +188,17 @@ for title, (_stc, clim) in dict(enhanced=(foo, clim_enh),
             fig.savefig(fname)
             close(fig)
         # save volume as nifti, to compare with R implementation
-        nib.save(_stc.as_volume(inverse['src'], mri_resolution=True),
-                 f'ptfce_{title}.nii.gz')
+        vol = _stc.as_volume(inverse['src'], mri_resolution=True)
+        nib.save(vol, f'ptfce_{title}.nii.gz')
     else:
         fig = _stc.plot(title=title, clim=clim,
                         initial_time=_stc.get_peak()[1])
         fig.save_image(fname)
+# make a brain mask (outside for-loop because we only need to do it once)
+# the .max(axis=-1) should collapse across the time dimension
+if volume:
+    mask = (vol.get_fdata().max(axis=-1) > 0).astype(np.uint8)
+    nib.save(nib.Nifti1Image(mask, vol.affine), 'brain_mask.nii.gz')
 
 # plot distributions and save
 fig = plot_null_distr(
