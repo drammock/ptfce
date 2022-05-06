@@ -209,4 +209,4 @@ else:
 fig = plot_null_distr(
     noise, n_iter, source_activation_density_func, cluster_size_density_func,
     all_noise_cluster_sizes)
-fig.savefig(f'figs/null-distribution-plots-{stc_kind}-stc.png')
+fig.savefig(f'figs/null-distribution-plots-{n_iter}iter-{stc_kind}-stc.png')
