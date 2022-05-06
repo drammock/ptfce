@@ -138,7 +138,7 @@ data = stc.data.ravel()
 # expand adjacency to temporal dimension
 adjacency = mne.stats.combine_adjacency(len(stc.times), src_adjacency)
 
-max_cluster_size = max([len(hemi) for hemi in stc.vertices])
+max_cluster_size = max([len(hemi) for hemi in stc.vertices]) * len(stc.times)
 
 # compute colorer
 whitener, ch_names, rank, colorer = mne.cov.compute_whitener(
