@@ -14,8 +14,11 @@ sample_data_folder = mne.datasets.sample.data_path()
 n_jobs = 4
 n_iter = 20
 verbose = False
-volume = True
-stc_kind = 'vol' if volume else 'surf'
+# surf → full timecourse, surface source space
+# vol  → full timecourse volume source space
+# peak → single timepoint volume (for validation against R)
+analysis = 'peak'
+volume = analysis in ('peak', 'vol')
 
 
 def get_sensor_data():
@@ -105,6 +108,12 @@ def make_noise(raw, noise_cov, seed=None, n_jobs=1, verbose=None):
 # get the sensor data
 raw, evoked, noise_cov = get_sensor_data()
 
+if analysis == 'peak':
+    # reduce to 1 timepoint, for quicker comparison
+    ch, t_peak = evoked.get_peak()
+    evoked.crop(t_peak, t_peak)
+    assert evoked.data.shape[1] == 1
+
 # get the inverse operator
 print('Creating inverse operator')
 snr = 3.
@@ -177,31 +186,31 @@ clim_orig = dict(kind='percent', lims=tuple(100 * (1 - pval_threshs)))
 # auto clims yields: 96, 97.5, 99.95
 
 # plot before/after on brains
-for title, (_stc, clim) in dict(enhanced=(foo, clim_enh),
-                                original=(stc, clim_orig)).items():
-    fname = f'figs/{title}-stc-data-{stc_kind}.png'
-    if volume:
+for title, (_stc, clim) in dict(original=(stc, clim_orig),
+                                enhanced=(stc_ptfce, clim_orig),
+                                neglogp=(foo, clim_enh)).items():
+    fname = f'figs/{title}-stc-data-{analysis}.png'
+    if analysis == 'surf':
+        fig = _stc.plot(title=title, clim=clim,
+                        initial_time=_stc.get_peak()[1])
+        fig.save_image(fname)
+    elif analysis == 'vol':
         assert isinstance(stc, mne.VolSourceEstimate)
         # these nilearn-based plots block execution by default, so use ion
         with ion():
             fig = _stc.plot(src=inverse['src'], clim=clim)
             fig.savefig(fname)
             close(fig)
+    else:  # 'peak'
         # save volume as nifti, to compare with R implementation
         vol = _stc.as_volume(inverse['src'], mri_resolution=True)
         nib.save(vol, f'ptfce_{title}.nii.gz')
-    else:
-        fig = _stc.plot(title=title, clim=clim,
-                        initial_time=_stc.get_peak()[1])
-        fig.save_image(fname)
-# make a brain mask (outside for-loop because we only need to do it once)
-# the .max(axis=-1) should collapse across the time dimension
-if volume:
-    mask = (vol.get_fdata().max(axis=-1) > 0).astype(np.uint8)
-    nib.save(nib.Nifti1Image(mask, vol.affine), 'brain_mask.nii.gz')
+        # make a brain mask
+        mask = (vol.get_fdata() > 0).astype(np.uint8)
+        nib.save(nib.Nifti1Image(mask, vol.affine), f'brain_mask_{title}.nii.gz')
 
 # plot distributions and save
 fig = plot_null_distr(
     noise, n_iter, source_activation_density_func, cluster_size_density_func,
     all_noise_cluster_sizes)
-fig.savefig(f'figs/null-distribution-plots-{n_iter}iter-{stc_kind}-stc.png')
+fig.savefig(f'figs/null-distribution-plots-{analysis}-stc.png')
