@@ -11,7 +11,7 @@ rng = np.random.default_rng(seed=15485863)  # the one millionth prime
 sample_data_folder = mne.datasets.sample.data_path()
 
 # configuration variables
-n_jobs = 4
+n_jobs = 6
 n_iter = 20
 verbose = False
 # surf → full timecourse, surface source space
@@ -178,8 +178,9 @@ stc_ptfce.data = _ptfce.reshape(stc.data.shape)
 # # # # # # # # # # # # #
 
 # convert p-values to -log10 pvalues
-foo = stc_ptfce.copy()
-foo.data = -1 * np.log10(np.maximum(foo.data, 1e-10))
+stc_enh = stc_ptfce.copy()
+stc_enh.data = -1 * np.log10(np.maximum(stc_enh.data, 1e-10))
+# prep colormaps
 pval_threshs = np.array([0.05, 0.001, 1e-10])
 clim_enh = dict(kind='value', lims=tuple(-np.log10(pval_threshs)))
 clim_orig = dict(kind='percent', lims=tuple(100 * (1 - pval_threshs)))
@@ -188,7 +189,7 @@ clim_orig = dict(kind='percent', lims=tuple(100 * (1 - pval_threshs)))
 # plot before/after on brains
 for title, (_stc, clim) in dict(original=(stc, clim_orig),
                                 enhanced=(stc_ptfce, clim_orig),
-                                neglogp=(foo, clim_enh)).items():
+                                neglogp=(stc_enh, clim_enh)).items():
     fname = f'figs/{title}-stc-data-{analysis}.png'
     if analysis == 'surf':
         fig = _stc.plot(title=title, clim=clim,
