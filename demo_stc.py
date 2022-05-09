@@ -208,7 +208,8 @@ for title, (_stc, clim) in dict(original=(stc, clim_orig),
         nib.save(vol, f'ptfce_{title}.nii.gz')
         # make a brain mask
         mask = (vol.get_fdata() > 0).astype(np.uint8)
-        nib.save(nib.Nifti1Image(mask, vol.affine), f'brain_mask_{title}.nii.gz')
+        nib.save(nib.Nifti1Image(mask, vol.affine),
+                 f'brain_mask_{title}.nii.gz')
 
 # plot distributions and save
 fig = plot_null_distr(
