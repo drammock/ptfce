@@ -126,7 +126,6 @@ inverse = get_inverse(
     raw, noise_cov, subject, subjects_dir, n_jobs=n_jobs, verbose=verbose,
     volume=volume)
 src_adjacency = mne.spatial_src_adjacency(inverse['src'])
-adjacency = None
 
 # automatically choose fewer noise simulations if there are more timepoints
 n_iter = min(n_iter, np.ceil(n_iter / len(evoked.times)).astype(int))
@@ -188,22 +187,23 @@ clim_orig = dict(kind='percent', lims=tuple(100 * (1 - pval_threshs)))
 
 # plot before/after on brains
 for title, (_stc, clim) in dict(original=(stc, clim_orig),
-                                enhanced=(stc_ptfce, clim_orig),
+                                # enhanced=(stc_ptfce, clim_orig),
                                 neglogp=(stc_enh, clim_enh)).items():
-    fname = f'figs/{title}-stc-data-{analysis}.png'
+    figname = f'figs/{title}-stc-data-{analysis}.png'
     if analysis == 'surf':
         fig = _stc.plot(title=title, clim=clim,
                         initial_time=_stc.get_peak()[1])
-        fig.save_image(fname)
+        fig.save_image(figname)
     elif analysis == 'vol':
         assert isinstance(stc, mne.VolSourceEstimate)
         # these nilearn-based plots block execution by default, so use ion
         with ion():
             fig = _stc.plot(src=inverse['src'], clim=clim)
-            fig.savefig(fname)
+            fig.savefig(figname)
             close(fig)
     else:  # 'peak'
         # save volume as nifti, to compare with R implementation
+        fname = f'ptfce_{title}'
         vol = _stc.as_volume(inverse['src'], mri_resolution=True)
         nib.save(vol, f'ptfce_{title}.nii.gz')
         # make a brain mask
