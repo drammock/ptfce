@@ -4,6 +4,8 @@ import mne
 import nibabel as nib
 import numpy as np
 from matplotlib.pyplot import close, ion
+from scipy.stats import f as fdist
+from scipy.stats import norm
 
 from ptfce import plot_null_distr, ptfce, timer
 
@@ -205,11 +207,24 @@ for title, (_stc, clim) in dict(original=(stc, clim_orig),
         # save volume as nifti, to compare with R implementation
         fname = f'ptfce_{title}'
         vol = _stc.as_volume(inverse['src'], mri_resolution=True)
-        nib.save(vol, f'ptfce_{title}.nii.gz')
-        # make a brain mask
-        mask = (vol.get_fdata() > 0).astype(np.uint8)
-        nib.save(nib.Nifti1Image(mask, vol.affine),
-                 f'brain_mask_{title}.nii.gz')
+        # remove singleton timepoint dimension
+        if vol.shape[-1] == 1:
+            vol.dataobj.shape = vol.shape[:-1]
+        # we need to transform the data to MNI Talairach space
+        # for glass-brain plotting to work right
+        trans = mne.transforms.read_ras_mni_t(subject=_stc.subject,
+                                              subjects_dir=None)
+        vol = nib.Nifti1Image(vol.dataobj, trans['trans'] @ vol.affine)
+        nib.save(vol, f'{fname}.nii.gz')
+        # we also need to convert dSPM's F-values into the z-values that the
+        # R implementation expects
+        z_vals = norm.ppf(fdist.cdf(vol.dataobj, dfn=3, dfd=raw.n_times))
+        vol_z = nib.Nifti1Image(z_vals, vol.affine)
+        nib.save(vol_z, f'{fname}_z.nii.gz')
+        # make a brain mask (only need one)
+        if title == 'original':
+            mask = (vol.get_fdata() > 0).astype(np.uint8)
+            nib.save(nib.Nifti1Image(mask, vol.affine), 'brain_mask.nii.gz')
 
 # plot distributions and save
 fig = plot_null_distr(
