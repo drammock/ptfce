@@ -191,7 +191,8 @@ def ptfce(data, adjacency, noise, max_cluster_size, seed=None):
                            desc='running noise simulations'):
         this_clusters = list()
         for threshold in tqdm(all_thresholds, unit='threshold', position=1,
-                              desc='finding clusters at each threshold'):
+                              desc='finding clusters at each threshold',
+                              leave=False):
             # compute cluster size prior
             clust = _find_clusters(noise_iter, threshold, adjacency)
             this_clusters.append(clust)
