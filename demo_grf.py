@@ -2,15 +2,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 from FyeldGenerator import generate_field
 from mne.stats import combine_adjacency
+from rpy2.robjects import r
+from rpy2.robjects.numpy2ri import activate, deactivate, numpy2rpy
 from scipy.stats import multivariate_normal, zscore
 
 from ptfce import plot_null_distr, ptfce, timer
 
-rng = np.random.default_rng(seed=15485863)  # the one millionth prime
-
 # configuration variables
+rng = np.random.default_rng(seed=15485863)  # the one millionth prime
 n_iter = 20
 shape = (100, 100)
+save_rdata = False
 
 
 def make_grf_noise(size, n_iter):
@@ -35,7 +37,8 @@ def make_grf_noise(size, n_iter):
 # make fake signal
 background = make_grf_noise(shape, 1)[0]
 indices = np.array(list(np.ndindex(shape))) - np.array(shape) // 2
-signal = multivariate_normal(mean=(0, 0)).pdf(indices / 5).reshape(shape)
+mean = (0,) * len(shape)
+signal = multivariate_normal(mean=mean).pdf(indices / 5).reshape(shape)
 data = background + 2 * signal
 
 # make adjacency
@@ -47,6 +50,15 @@ noise = make_grf_noise(shape, n_iter)
 # prep
 data = zscore(data, axis=None)
 _noise = zscore(noise.reshape(n_iter, -1), axis=-1)
+
+# write data to R-friendly format (for testing/debugging)
+if save_rdata:
+    activate()
+    rdata = numpy2rpy(data)
+    r.assign('rdata', rdata)
+    r('saveRDS(rdata, "sim-data.rds")')
+    del rdata
+    deactivate()
 
 # compute pTFCE
 with timer('running pTFCE'):
@@ -70,11 +82,15 @@ enhanced_img = -1 * np.log10(pvals)
 # TESTING #
 # # # # # #
 
-fig, axs = plt.subplots(1, 2)
+fig, axs = plt.subplots(1, 2, sharex=True, sharey=True)
 titles = ('original', 'enhanced')
+clim = (min(data.min(), enhanced_img.min()),
+        max(data.max(), enhanced_img.max()))
 for ax, title, array in zip(axs, titles, (data, enhanced_img)):
-    ax.imshow(array, cmap='Greys')
+    ax.imshow(array, cmap='Greys', clim=clim)
     ax.set(title=title)
+fig.tight_layout()
+fig.colorbar(ax.images[0], ax=axs, shrink=0.5, label='z-score')
 fig.savefig('figs/original-and-enhanced-grf-data.png')
 
 fig = plot_null_distr(
