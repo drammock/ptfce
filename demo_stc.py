@@ -178,9 +178,10 @@ stc_ptfce.data = _ptfce.reshape(stc.data.shape)
 # VISUALIZE THE RESULTS #
 # # # # # # # # # # # # #
 
-# convert p-values to -log10 pvalues
+# convert p-values to -log10 p-values
 stc_enh = stc_ptfce.copy()
 stc_enh.data = -1 * np.log10(np.maximum(stc_enh.data, 1e-10))
+# stc_enh.data = norm.isf(stc_ehn.data)  # better comparison?
 # prep colormaps
 pval_threshs = np.array([0.05, 0.001, 1e-10])
 clim_enh = dict(kind='value', lims=tuple(-np.log10(pval_threshs)))
@@ -190,7 +191,8 @@ clim_orig = dict(kind='percent', lims=tuple(100 * (1 - pval_threshs)))
 # plot before/after on brains
 for title, (_stc, clim) in dict(original=(stc, clim_orig),
                                 # enhanced=(stc_ptfce, clim_orig),
-                                neglogp=(stc_enh, clim_enh)).items():
+                                neglogp=(stc_enh, clim_enh)
+                                ).items():
     figname = f'figs/{title}-stc-data-{analysis}.png'
     if analysis == 'surf':
         fig = _stc.plot(title=title, clim=clim,
@@ -200,7 +202,7 @@ for title, (_stc, clim) in dict(original=(stc, clim_orig),
         assert isinstance(stc, mne.VolSourceEstimate)
         # these nilearn-based plots block execution by default, so use ion
         with ion():
-            fig = _stc.plot(src=inverse['src'], clim=clim)
+            fig = _stc.plot(src=inverse['src'], clim=clim, mode='glass_brain')
             fig.savefig(figname)
             close(fig)
     else:  # 'peak'
@@ -210,21 +212,27 @@ for title, (_stc, clim) in dict(original=(stc, clim_orig),
         # remove singleton timepoint dimension
         if vol.shape[-1] == 1:
             vol.dataobj.shape = vol.shape[:-1]
-        # we need to transform the data to MNI Talairach space
-        # for glass-brain plotting to work right
-        trans = mne.transforms.read_ras_mni_t(subject=_stc.subject,
-                                              subjects_dir=None)
-        vol = nib.Nifti1Image(vol.dataobj, trans['trans'] @ vol.affine)
+        # let's keep everything in subject-coordinates when running in R, then
+        # do necessary transforms in Python afterwards
+        # (making sure to save the affine first so we can re-load it later)
+        affine = vol.affine[:]
+        np.save('affine.npy', affine)
+        vol = nib.Nifti1Image(vol.dataobj, affine=np.eye(4))
         nib.save(vol, f'{fname}.nii.gz')
         # we also need to convert dSPM's F-values into the z-values that the
-        # R implementation expects
-        z_vals = norm.ppf(fdist.cdf(vol.dataobj, dfn=3, dfd=raw.n_times))
+        # R implementation expects (and avoid introducing non-finite values
+        # along the way)
+        probs = fdist.cdf(vol.dataobj, dfn=3, dfd=raw.n_times)
+        inf_mask = probs == 0.
+        probs = np.nextafter(probs, np.inf, where=inf_mask, out=probs)
+        z_vals = norm.ppf(probs)
         vol_z = nib.Nifti1Image(z_vals, vol.affine)
         nib.save(vol_z, f'{fname}_z.nii.gz')
         # make a brain mask (only need one)
         if title == 'original':
-            mask = (vol.get_fdata() > 0).astype(np.uint8)
-            nib.save(nib.Nifti1Image(mask, vol.affine), 'brain_mask.nii.gz')
+            brain_mask = (vol.dataobj > 0).astype(np.uint8)
+            nib.save(nib.Nifti1Image(brain_mask, vol.affine),
+                     'brain_mask.nii.gz')
 
 # plot distributions and save
 fig = plot_null_distr(
