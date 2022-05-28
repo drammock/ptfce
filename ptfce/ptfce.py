@@ -295,8 +295,25 @@ def calc_thresholded_source_prior(threshold, noise):
 
 
 def plot_null_distr(noise, n_iter, source_activation_density_func,
-                    cluster_size_density_func, all_noise_cluster_sizes):
+                    cluster_size_density_func, all_noise_cluster_sizes,
+                    compare=None):
     import matplotlib.pyplot as plt
+    from scipy.stats import norm  # f, t
+
+    if compare is not None:
+        if compare.lower() == 'z' or compare.startswith('norm'):
+            distr = norm
+        elif compare.lower() == 't':
+            raise NotImplementedError()
+            # distr = partial(t, df=)
+        elif compare.lower() == 'f':
+            raise NotImplementedError()
+            # distr = partial(f, dfn=, dfd=)
+        else:
+            raise ValueError(
+                f'compare must be "norm", "z", "f", or "t", got {compare}')
+        distr_kw = dict(color='k', alpha=0.3, zorder=0, linestyle='--',
+                        linewidth=3)
 
     # initialize figure
     fig, axs = plt.subplots(1, 3)
@@ -306,12 +323,16 @@ def plot_null_distr(noise, n_iter, source_activation_density_func,
     x = np.linspace(noise.min(), noise.max(), 100)
     y = source_activation_density_func(x)
     ax.plot(x, y)
+    if compare is not None:
+        ax.plot(x, distr.pdf(x), **distr_kw)
     ax.set(title=f'source activation density{subtitle}',
            xlabel='activation', ylabel='density')
     # second plot: probability of suprathresholdness
     ax = axs[1]
     y = calc_thresholded_source_prior(threshold=x, noise=noise)
     ax.plot(x, y)
+    if compare is not None:
+        ax.plot(x, distr.sf(x), **distr_kw)
     ax.set(title=f'probability of suprathresholdness{subtitle}',
            xlabel='threshold', ylabel='probability')
     # third plot: cluster size density
